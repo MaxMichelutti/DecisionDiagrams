@@ -1,4 +1,4 @@
-# Decision Diagrams and dDNNFs
+# Knowledge Compilation Tool
 
 ## Running
 
@@ -43,61 +43,10 @@ The tool supports both abstraction based and theory consistent compilation in dD
 
 Compilation in dDNNF is currently not supported by the tool for OSs other than Linux.
 
-## Using the Tabular AllSMT solver
+# Query Tool
 
-This tool is compatible with the Tabular AllSMT solver. This solver is currently not publicly available and it was implemented in this tool for research purposes. If you happen to own a copy of the solver's binary, update your .env to point to the path of the binary. Remember to grant the binary execution permission.
+To use the query tool on T-d-DNNFs, remmeber to update your ```.env``` file.
 
-## Dumping XSDDs
+You can find the implementation for d-DNNF condition at [this link](https://github.com/MaxMichelutti/dDNNF-Query).
 
-<!-- When using XSDDs be careful to install https://github.com/ML-KULeuven/psipy instead of the default psipy to use the PSI solver -->
-
-The dd library was slightly changed to allow for .dot dumping as follows:
-
-```
-def dump(self, filename, roots=None,
-             filetype=None, **kw):
-        if filetype is None:
-            name = filename.lower()
-            if name.endswith('.pdf'):
-                filetype = 'pdf'
-            elif name.endswith('.png'):
-                filetype = 'png'
-            elif name.endswith('.svg'):
-                filetype = 'svg'
-            elif name.endswith('.p'):
-                filetype = 'pickle'
-            elif name.endswith('.dot'):
-                filetype = 'dot'
-            else:
-                raise Exception((
-                    'cannot infer file type '
-                    'from extension of file '
-                    'name "{f}"').format(
-                        f=filename))
-        if filetype in ('pdf', 'png', 'svg', 'dot'):
-            self._dump_figure(roots, filename,
-                              filetype, **kw)
-        elif filetype == 'pickle':
-            self._dump_bdd(roots, filename, **kw)
-        else:
-            raise Exception(
-                'unknown file type "{t}"'.format(
-                    t=filetype))
-
-    def _dump_figure(self, roots, filename,
-                     filetype, **kw):
-        """Write BDDs to `filename` as figure."""
-        g = to_pydot(roots, self)
-        if filetype == 'pdf':
-            g.write_pdf(filename, **kw)
-        elif filetype == 'png':
-            g.write_png(filename, **kw)
-        elif filetype == 'svg':
-            g.write_svg(filename, **kw)
-        elif filetype == 'dot':
-            g.write(filename, **kw)
-        else:
-            raise Exception(
-                'Unknown file type of "{f}"'.format(
-                    f=filename))
-```
+You can find the implementation for Dec d-DNNF [here](https://github.com/crillab/decdnnf_rs).

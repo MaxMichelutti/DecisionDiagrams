@@ -136,6 +136,32 @@ def get_wmi_bench_data(kind: str, source: str) -> List[Point]:
 
     return points
 
+def get_list_of_unsat_problems(source: str) -> List[str]:
+    """finds a list of problems that are unsat"""
+    files_list: List[str] = []
+    result=[]
+    for path, _subdirs, files in os.walk(source):
+        for name in files:
+            files_list.append(os.path.join(path, name))
+    for filename in files_list:
+        if not filename.endswith(".json"):
+            continue
+        if filename.endswith("abstraction.json"):
+            continue
+        if filename.endswith("mapping.json"):
+            continue
+        if filename.endswith("important_labels.json"):
+            continue
+        f = open(filename, encoding="utf8")
+        data = json.load(f)
+        if len(data) == 0 or data.get("timeout") is not None:
+            continue
+        if not "All-SMT result" in data:
+            continue
+        if data["All-SMT result"] == "UNSAT":
+            file_unsat = filename.replace(source+"/", '')
+            result.append(file_unsat)
+    return result
 
 def get_ldd_randgen_bench_data(kind: str, source: str) -> List[Point]:
     """gets the computation data from a run on randomly generated LDD benchmark problems"""
@@ -303,11 +329,16 @@ def get_smtlib_bench_data(kind: str, source: str) -> List[Point]:
             ddtime = 0.1
             ddmodels = None
         
-        if kind == "T-dDNNF":
+        if kind == "T-dDNNF" or kind == "Abstraction dDNNF":
             if "DIMACS translation time" in data[kind] and "refinement serialization time" in data[kind] and "dDNNF compilation time" in data[kind]:
                 ddtime = data[kind]["DIMACS translation time"] + \
                     data[kind]["refinement serialization time"] + \
                     data[kind]["dDNNF compilation time"]
+        # if kind == "Abstraction dDNNF":
+        #     if "DIMACS translation time" in data[kind] and "refinement serialization time" in data[kind] and "dDNNF compilation time" in data[kind]:
+        #         ddtime = data[kind]["DIMACS translation time"] + \
+        #             data[kind]["refinement serialization time"] + \
+        #             data[kind]["dDNNF compilation time"]
 
         # TODO()! Change if necessary
         ddmodels = None
@@ -370,13 +401,18 @@ def get_smtlib_bench_data(kind: str, source: str) -> List[Point]:
 def get_time_points(
         theory_points: List[Point],
         abstraction_points: List[Point],
-        timeout_value=None) -> Tuple[List[float], List[float], int]:
+        timeout_value=None,
+        unsat_sources=None) -> Tuple[List[float], List[float], int, List[float], List[float]]:
     """translate data into plottable points comparing time"""
+    if unsat_sources is None:
+        unsat_sources = []
     theory_points = copy.deepcopy(theory_points)
     abstraction_points = copy.deepcopy(abstraction_points)
 
     theory_list = []
     abstraction_list = []
+    unsat_theory_list = []
+    unsat_abstraction_list = []
     max_theory = theory_points[0].computation_time
     max_abstraction = abstraction_points[0].computation_time
 
@@ -402,10 +438,14 @@ def get_time_points(
     for t_p in theory_points:
         for a_p in abstraction_points:
             if t_p.title == a_p.title:
-                theory_list.append(t_p.computation_time)
-                abstraction_list.append(a_p.computation_time)
+                if t_p.title in unsat_sources:
+                    unsat_theory_list.append(t_p.computation_time)
+                    unsat_abstraction_list.append(a_p.computation_time)
+                else:
+                    theory_list.append(t_p.computation_time)
+                    abstraction_list.append(a_p.computation_time)
                 break
-    return (theory_list, abstraction_list, edge)
+    return (theory_list, abstraction_list, edge, unsat_theory_list, unsat_abstraction_list)
 
 
 def get_allsmt_time_points(
@@ -448,13 +488,18 @@ def get_allsmt_time_points(
 def get_dd_time_points(
         theory_points: List[Point],
         abstraction_points: List[Point],
-        timeout_value =None) -> Tuple[List[float], List[float], int]:
+        timeout_value =None,
+        unsat_sources=None) -> Tuple[List[float], List[float], int, List[float], List[float]]:
     """translate data into plottable points comparing all SMT time"""
+    if unsat_sources is None:
+        unsat_sources = []
     theory_points = copy.deepcopy(theory_points)
     abstraction_points = copy.deepcopy(abstraction_points)
 
     theory_list = []
     abstraction_list = []
+    unsat_theory_list = []
+    unsat_abstraction_list = []
     max_theory = theory_points[0].dd_time
     max_abstraction = abstraction_points[0].dd_time
 
@@ -480,10 +525,14 @@ def get_dd_time_points(
     for t_p in theory_points:
         for a_p in abstraction_points:
             if t_p.title == a_p.title:
-                theory_list.append(t_p.dd_time)
-                abstraction_list.append(a_p.dd_time)
+                if t_p.title in unsat_sources:
+                    unsat_theory_list.append(t_p.dd_time)
+                    unsat_abstraction_list.append(a_p.dd_time)
+                else:
+                    theory_list.append(t_p.dd_time)
+                    abstraction_list.append(a_p.dd_time)
                 break
-    return (theory_list, abstraction_list, edge)
+    return (theory_list, abstraction_list, edge, unsat_theory_list, unsat_abstraction_list)
 
 
 def get_lemmas_points(
@@ -727,7 +776,9 @@ def build_time_graph(time_points, x_label: str, y_label: str, file: str | None =
     """builds and displays the time graph"""
     if secondary_ponts is not None:
         plt.scatter(secondary_ponts[0], secondary_ponts[1], marker='x', color='#b30000')
-    plt.scatter(time_points[0], time_points[1], marker='x')    
+    plt.scatter(time_points[0], time_points[1], marker='x')
+    if len(time_points) > 3:
+        plt.scatter(time_points[3], time_points[4], marker='x', color='#00b300')
     plt.xlabel(x_label)
     plt.ylabel(y_label)
     # plt.title("Computation Time")
@@ -976,10 +1027,10 @@ def main() -> None:
         "T-BDD", "benchmarks/ldd_randgen/output_tbdd_total")
     print("Timeouts of T-BDDs on LDD randgen: ",
           timeout_to_str(ldd_randgen_bdds_points))
-    ldd_randgen_bdds_fp_points = get_ldd_randgen_bench_data(
-        "T-BDD", "benchmarks/ldd_randgen/output_tbdd_full_partial")
-    print("Timeouts of full partial T-BDDs on LDD randgen: ",
-          timeout_to_str(ldd_randgen_bdds_fp_points))
+    # ldd_randgen_bdds_fp_points = get_ldd_randgen_bench_data(
+    #     "T-BDD", "benchmarks/ldd_randgen/output_tbdd_full_partial")
+    # print("Timeouts of full partial T-BDDs on LDD randgen: ",
+    #       timeout_to_str(ldd_randgen_bdds_fp_points))
     ldd_randgen_abstraction_bdd_points = get_ldd_randgen_bench_data(
         "Abstraction BDD", "benchmarks/ldd_randgen/output_abstraction")
     print("Timeouts of Abs-BDDs on LDD randgen: ",
@@ -992,14 +1043,14 @@ def main() -> None:
         "Abstraction SDD", "benchmarks/ldd_randgen/output_abstraction_sdd")
     print("Timeouts of Abs-SDDs on LDD randgen: ",
           timeout_to_str(ldd_randgen_abstraction_sdd_points))
-    ldd_randgen_bdds_points_noeqsplit = get_ldd_randgen_bench_data(
-        "T-BDD", "benchmarks/ldd_randgen/output_tbdd_total")
-    print("Timeouts of T-BDDs on LDD randgen (no eq split): ",
-          timeout_to_str(ldd_randgen_bdds_points_noeqsplit))
-    ldd_randgen_ddnnf_partial_points = get_ldd_randgen_bench_data(
-        "T-dDNNF", "benchmarks/ldd_randgen/output_dDNNF_fp")
-    print("Timeouts of T-dDNNFs fp on LDD randgen: ",
-          timeout_to_str(ldd_randgen_ddnnf_partial_points))
+    # ldd_randgen_bdds_points_noeqsplit = get_ldd_randgen_bench_data(
+    #     "T-BDD", "benchmarks/ldd_randgen/output_tbdd_total")
+    # print("Timeouts of T-BDDs on LDD randgen (no eq split): ",
+    #       timeout_to_str(ldd_randgen_bdds_points_noeqsplit))
+    # ldd_randgen_ddnnf_partial_points = get_ldd_randgen_bench_data(
+    #     "T-dDNNF", "benchmarks/ldd_randgen/output_dDNNF_fp")
+    # print("Timeouts of T-dDNNFs fp on LDD randgen: ",
+    #       timeout_to_str(ldd_randgen_ddnnf_partial_points))
     ldd_randgen_ddnnf_abstract_c2d_points = get_ldd_randgen_bench_data(
         "Abstraction dDNNF", "benchmarks/ldd_randgen/output_abstraction_ddnnf_c2d")
     print("Timeouts of Abstraction dDNNFs C2D on LDD randgen: ",
@@ -1008,27 +1059,27 @@ def main() -> None:
         "Abstraction dDNNF", "benchmarks/ldd_randgen/output_abstraction_ddnnf_d4")
     print("Timeouts of Abstraction dDNNFs D4 on LDD randgen: ",
           timeout_to_str(ldd_randgen_ddnnf_abstract_d4_points))
-    ldd_randgen_sample_points = get_ldd_randgen_bench_data(
-        "T-dDNNF", "benchmarks/ldd_randgen/output_dDNNF_sample")
-    print("Timeouts of T-dDNNFs sample on LDD randgen: ",
-          timeout_to_str(ldd_randgen_sample_points))
-    ldd_randgen_sdd_full_partial_points = get_ldd_randgen_bench_data(
-        "T-SDD", "benchmarks/ldd_randgen/output_sdd_full_partial")
-    print("Timeouts of T-SDDs full partial on LDD randgen: ",
-          timeout_to_str(ldd_randgen_sdd_full_partial_points))
+    # ldd_randgen_sample_points = get_ldd_randgen_bench_data(
+    #     "T-dDNNF", "benchmarks/ldd_randgen/output_dDNNF_sample")
+    # print("Timeouts of T-dDNNFs sample on LDD randgen: ",
+    #       timeout_to_str(ldd_randgen_sample_points))
+    # ldd_randgen_sdd_full_partial_points = get_ldd_randgen_bench_data(
+    #     "T-SDD", "benchmarks/ldd_randgen/output_sdd_full_partial")
+    # print("Timeouts of T-SDDs full partial on LDD randgen: ",
+    #       timeout_to_str(ldd_randgen_sdd_full_partial_points))
 
-    ldd_randgen_allsmt_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/ldd_randgen/tmp_total")
-    ldd_randgen_allsmt_partial_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/ldd_randgen/tmp_full_partial")
-    ldd_randgen_allsmt_tabular_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/ldd_randgen/tmp_tabular_total")
+    # ldd_randgen_allsmt_total_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/ldd_randgen/tmp_total")
+    # ldd_randgen_allsmt_partial_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/ldd_randgen/tmp_full_partial")
+    # ldd_randgen_allsmt_tabular_total_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/ldd_randgen/tmp_tabular_total")
     
-    time_points = get_allsmt_time_points(
-        ldd_randgen_allsmt_total_points,ldd_randgen_allsmt_tabular_total_points
-    )
-    build_time_graph(time_points, "MathSAT", "Tabular",
-                        "plots/ldd_randgen/allsmt_total_vs_tabular_total_time.pdf")
+    # time_points = get_allsmt_time_points(
+    #     ldd_randgen_allsmt_total_points,ldd_randgen_allsmt_tabular_total_points
+    # )
+    # build_time_graph(time_points, "MathSAT", "Tabular",
+    #                     "plots/ldd_randgen/allsmt_total_vs_tabular_total_time.pdf")
                      
 
     ldd_randgen_ddnnf_c2d_total_points = get_ldd_randgen_bench_data(
@@ -1047,6 +1098,10 @@ def main() -> None:
         "T-dDNNF", "benchmarks/ldd_randgen/output_tddnnf_d4_not_quantified_total_new")
     print("Timeouts of T-dDNNFs d4 (no quant) on LDD randgen: ",
           timeout_to_str(ldd_randgen_ddnnf_d4_total_not_quantified_points))
+    
+    ldd_randgen_unsat_points = get_list_of_unsat_problems(
+        "benchmarks/ldd_randgen/output_tbdd_total")
+    print(ldd_randgen_unsat_points)
 
     # # T-dDNNF size vs phi size
     # size_points = get_phi_size_vs_dd_nodes_points(
@@ -1072,27 +1127,27 @@ def main() -> None:
     # size_points = get_phi_size_vs_dd_nodes_points(
     #     ldd_randgen_ddnnf_d4_total_points)
     # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-dDNNF size",
-    #                                 "plots/ldd_randgen/ddnnf_d4_phi_size_vs_dd_size.pdf")
+    # #                                 "plots/ldd_randgen/ddnnf_d4_phi_size_vs_dd_size.pdf")
 
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     ldd_randgen_ddnnf_d4_total_not_quantified_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-dDNNF size",
-    #                                 "plots/ldd_randgen/ddnnf_d4_phi_size_vs_dd_size_no_quant.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     ldd_randgen_ddnnf_d4_total_not_quantified_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-dDNNF size",
+    # #                                 "plots/ldd_randgen/ddnnf_d4_phi_size_vs_dd_size_no_quant.pdf")
     
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     ldd_randgen_bdds_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-OBDD size",
-    #                                 "plots/ldd_randgen/bdd_phi_size_vs_dd_size.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     ldd_randgen_bdds_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-OBDD size",
+    # #                                 "plots/ldd_randgen/bdd_phi_size_vs_dd_size.pdf")
     
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     ldd_randgen_sdds_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-SDD size",
-    #                                 "plots/ldd_randgen/sdd_phi_size_vs_dd_size.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     ldd_randgen_sdds_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "T-SDD size",
+    # #                                 "plots/ldd_randgen/sdd_phi_size_vs_dd_size.pdf")
     
-    # size_points = get_nodes_points(
-    #     ldd_randgen_ddnnf_c2d_total_points, ldd_randgen_ddnnf_abstract_c2d_points)
-    # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
-    #                  "plots/ldd_randgen/ddnnf_c2d_vs_ddnnf_abstr_size.pdf")
+    # # size_points = get_nodes_points(
+    # #     ldd_randgen_ddnnf_c2d_total_points, ldd_randgen_ddnnf_abstract_c2d_points)
+    # # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
+    # #                  "plots/ldd_randgen/ddnnf_c2d_vs_ddnnf_abstr_size.pdf")
     
     time_points = get_time_points(
         ldd_randgen_ddnnf_c2d_total_points, ldd_randgen_ddnnf_abstract_c2d_points)
@@ -1100,13 +1155,15 @@ def main() -> None:
         ldd_randgen_ddnnf_c2d_total_points, ldd_randgen_ddnnf_abstract_c2d_points,
         timeout_value=time_points[2])
     build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
-                     "plots/ldd_randgen/ddnnf_c2d_vs_ddnnf_abstr_time.pdf",
-                     secondary_ponts=time_points_dd)
+                     "plots/ldd_randgen/ddnnf_c2d_vs_ddnnf_abstr_time.pdf")
+    #                  secondary_ponts=time_points_dd)
+    build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+                     "plots/ldd_randgen/ddnnf_c2d_vs_ddnnf_abstr_dd_time.pdf")
     
-    # size_points = get_nodes_points(
-    #     ldd_randgen_ddnnf_d4_total_points, ldd_randgen_ddnnf_abstract_d4_points)
-    # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
-    #                  "plots/ldd_randgen/ddnnf_d4_vs_ddnnf_abstr_size.pdf")
+    # # size_points = get_nodes_points(
+    # #     ldd_randgen_ddnnf_d4_total_points, ldd_randgen_ddnnf_abstract_d4_points)
+    # # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
+    # #                  "plots/ldd_randgen/ddnnf_d4_vs_ddnnf_abstr_size.pdf")
     
     time_points = get_time_points(
         ldd_randgen_ddnnf_d4_total_points, ldd_randgen_ddnnf_abstract_d4_points)
@@ -1114,8 +1171,10 @@ def main() -> None:
         ldd_randgen_ddnnf_d4_total_points, ldd_randgen_ddnnf_abstract_d4_points,
         timeout_value=time_points[2])
     build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
-                     "plots/ldd_randgen/ddnnf_d4_vs_ddnnf_abstr_time.pdf",
-                     secondary_ponts=time_points_dd)
+                     "plots/ldd_randgen/ddnnf_d4_vs_ddnnf_abstr_time.pdf")
+    #                  secondary_ponts=time_points_dd)
+    build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+                     "plots/ldd_randgen/ddnnf_d4_vs_ddnnf_abstr_dd_time.pdf")
     
     # size_points = get_phi_size_vs_dd_nodes_points(
     #     ldd_randgen_abstraction_bdd_points)
@@ -1237,21 +1296,23 @@ def main() -> None:
     # build_size_graph(size_points, "Partial T-dDNNF", "Sample T-dDNNF",
     #                  "plots/ldd_randgen/ddnnf_partial_vs_sample_size.pdf")
 
-    # print("LDD randgen LDD vs BDD graphs")
+    # # print("LDD randgen LDD vs BDD graphs")
     time_points = get_time_points(
         ldd_randgen_bdds_points, ldd_randgen_ldds_points)
     time_points_dd = get_dd_time_points(
         ldd_randgen_bdds_points, ldd_randgen_ldds_points,
         timeout_value=time_points[2])
-    size_points = get_nodes_points(
-        ldd_randgen_bdds_points, ldd_randgen_ldds_points)
-    # models_points = get_dd_models_points(
+    # size_points = get_nodes_points(
     #     ldd_randgen_bdds_points, ldd_randgen_ldds_points)
+    # # models_points = get_dd_models_points(
+    # #     ldd_randgen_bdds_points, ldd_randgen_ldds_points)
     build_time_graph(time_points, "T-OBDD", "LDD",
-                     "plots/ldd_randgen/ldd_vs_tbdd_time.pdf",
-                     secondary_ponts=time_points_dd)
-    build_size_graph(size_points, "T-OBDD", "LDD",
-                     "plots/ldd_randgen/ldd_vs_tbdd_size.pdf")
+                     "plots/ldd_randgen/ldd_vs_tbdd_time.pdf")
+                    #  secondary_ponts=time_points_dd)
+    build_time_graph(time_points_dd, "T-OBDD", "LDD",
+                     "plots/ldd_randgen/ldd_vs_tbdd_dd_time.pdf")
+    # build_size_graph(size_points, "T-OBDD", "LDD",
+    #                  "plots/ldd_randgen/ldd_vs_tbdd_size.pdf")
     # build_models_graph(models_points, "T-OBDD", "LDD",
     #                    "plots/ldd_randgen/ldd_vs_tbdd_models.pdf")
 
@@ -1263,40 +1324,44 @@ def main() -> None:
     # models_points = get_dd_models_points(
     #     ldd_randgen_bdds_points, ldd_randgen_bdds_points_noeqsplit)
     # build_time_graph(time_points, "NO Opt", "Opt")
-    # build_size_graph(size_points, "NO Opt", "Opt")
-    # build_models_graph(models_points, "NO Opt", "Opt")
+    # # build_size_graph(size_points, "NO Opt", "Opt")
+    # # build_models_graph(models_points, "NO Opt", "Opt")
 
-    # print("LDD randgen BDD graphs")
+    # # print("LDD randgen BDD graphs")
     time_points = get_time_points(
         ldd_randgen_bdds_points, ldd_randgen_abstraction_bdd_points)
     time_points_dd = get_dd_time_points(
         ldd_randgen_bdds_points, ldd_randgen_abstraction_bdd_points,
         timeout_value=time_points[2])
-    size_points = get_nodes_points(
-        ldd_randgen_bdds_points, ldd_randgen_abstraction_bdd_points)
-    # models_points = get_dd_models_points(
+    # size_points = get_nodes_points(
     #     ldd_randgen_bdds_points, ldd_randgen_abstraction_bdd_points)
+    # # models_points = get_dd_models_points(
+    # #     ldd_randgen_bdds_points, ldd_randgen_abstraction_bdd_points)
     build_time_graph(time_points, "T-OBDD", "Abs. BDD",
-                     "plots/ldd_randgen/abstr_bdd_vs_tbdd_time.pdf",
-                     secondary_ponts = time_points_dd)
-    build_size_graph(size_points, "T-OBDD", "Abs. BDD",
-                     "plots/ldd_randgen/abstr_bdd_vs_tbdd_size.pdf")
-    # build_models_graph(models_points, "T-OBDD", "Abs. BDD",
-    #                    "plots/ldd_randgen/abstr_bdd_vs_tbdd_models.pdf")
+                     "plots/ldd_randgen/abstr_bdd_vs_tbdd_time.pdf")
+    #                  secondary_ponts = time_points_dd)
+    build_time_graph(time_points_dd, "T-OBDD", "Abs. BDD",
+                     "plots/ldd_randgen/abstr_bdd_vs_tbdd_dd_time.pdf")
+    # build_size_graph(size_points, "T-OBDD", "Abs. BDD",
+    #                  "plots/ldd_randgen/abstr_bdd_vs_tbdd_size.pdf")
+    # # build_models_graph(models_points, "T-OBDD", "Abs. BDD",
+    # #                    "plots/ldd_randgen/abstr_bdd_vs_tbdd_models.pdf")
 
-    # print("LDD randgen SDD graphs")
+    # # print("LDD randgen SDD graphs")
     time_points = get_time_points(
         ldd_randgen_sdds_points, ldd_randgen_abstraction_sdd_points)
     time_points_dd = get_dd_time_points(
         ldd_randgen_sdds_points, ldd_randgen_abstraction_sdd_points,
         timeout_value=time_points[2])
-    size_points = get_nodes_points(
-        ldd_randgen_sdds_points, ldd_randgen_abstraction_sdd_points)
+    # size_points = get_nodes_points(
+    #     ldd_randgen_sdds_points, ldd_randgen_abstraction_sdd_points)
     build_time_graph(time_points, "T-SDD", "Abs. SDD",
-                     "plots/ldd_randgen/abstr_sdd_vs_tsdd_time.pdf",
-                     secondary_ponts = time_points_dd)
-    build_size_graph(size_points, "T-SDD", "Abs. SDD",
-                     "plots/ldd_randgen/abstr_sdd_vs_tsdd_size.pdf")
+                     "plots/ldd_randgen/abstr_sdd_vs_tsdd_time.pdf")
+    #                  secondary_ponts = time_points_dd)
+    build_time_graph(time_points_dd, "T-SDD", "Abs. SDD",
+                     "plots/ldd_randgen/abstr_sdd_vs_tsdd_dd_time.pdf")
+    # build_size_graph(size_points, "T-SDD", "Abs. SDD",
+    #                  "plots/ldd_randgen/abstr_sdd_vs_tsdd_size.pdf")
 
     # print("LDD randgen DD gen graphs")
     # time_points = get_dd_time_points(
@@ -1320,10 +1385,10 @@ def main() -> None:
     print("Randgen size: ", len(randgen_bdds_points))
     print("Timeouts of T-BDDs on randgen: ",
           timeout_to_str(randgen_bdds_points))
-    randgen_bdds_fp_points = get_randgen_bench_data(
-        "T-BDD", "benchmarks/randgen/output_bdd_fp")
-    print("Timeouts of T-BDDs full partial on randgen: ",
-          timeout_to_str(randgen_bdds_fp_points))
+    # randgen_bdds_fp_points = get_randgen_bench_data(
+    #     "T-BDD", "benchmarks/randgen/output_bdd_fp")
+    # print("Timeouts of T-BDDs full partial on randgen: ",
+    #       timeout_to_str(randgen_bdds_fp_points))
     randgen_abstraction_bdd_points = get_randgen_bench_data(
         "Abstraction BDD", "benchmarks/randgen/output_abstraction")
     print("Timeouts of Abs-BDDs on randgen: ",
@@ -1336,15 +1401,15 @@ def main() -> None:
         "Abstraction SDD", "benchmarks/randgen/output_abstraction_sdd")
     print("Timeouts of Abs-SDDs on randgen: ",
           timeout_to_str(randgen_abstraction_sdd_points))
-    randgen_no_eqsplit_points = get_randgen_bench_data(
-        "T-BDD", "benchmarks/randgen/output_noeqsplit")
-    print("Timeouts of T-OBDDs on randgen no eq split: ",
-          timeout_to_str(randgen_no_eqsplit_points))
+    # randgen_no_eqsplit_points = get_randgen_bench_data(
+    #     "T-BDD", "benchmarks/randgen/output_noeqsplit")
+    # print("Timeouts of T-OBDDs on randgen no eq split: ",
+    #       timeout_to_str(randgen_no_eqsplit_points))
 
-    randgen_ddnnf_full_partial_points = get_randgen_bench_data(
-        "T-dDNNF", "benchmarks/randgen/output_ddnnf_fp")
-    print("Timeouts of T-dDNNFs partial on randgen: ",
-          timeout_to_str(randgen_ddnnf_full_partial_points))
+    # randgen_ddnnf_full_partial_points = get_randgen_bench_data(
+    #     "T-dDNNF", "benchmarks/randgen/output_ddnnf_fp")
+    # print("Timeouts of T-dDNNFs partial on randgen: ",
+    #       timeout_to_str(randgen_ddnnf_full_partial_points))
     randgen_ddnnf_abstraction_d4_points = get_randgen_bench_data(
         "Abstraction dDNNF", "benchmarks/randgen/output_abstraction_ddnnf_d4")
     print("Timeouts of Abstraction dDNNFs on randgen D4: ",
@@ -1353,32 +1418,32 @@ def main() -> None:
         "Abstraction dDNNF", "benchmarks/randgen/output_abstraction_ddnnf_c2d")
     print("Timeouts of Abstraction dDNNFs on C2D randgen: ",
           timeout_to_str(randgen_ddnnf_abstraction_c2d_points))
-    randgen_sample_points = get_randgen_bench_data(
-        "T-dDNNF", "benchmarks/randgen/output_ddnnf_sample")
-    print("Timeouts of T-dDNNFs sample on randgen: ",
-          timeout_to_str(randgen_sample_points))
-    randgen_sdd_fp_points = get_randgen_bench_data(
-        "T-SDD", "benchmarks/randgen/output_sdd_fp")
-    print("Timeouts of T-SDDs full partial on randgen: ",
-          timeout_to_str(randgen_sdd_fp_points))
+    # randgen_sample_points = get_randgen_bench_data(
+    #     "T-dDNNF", "benchmarks/randgen/output_ddnnf_sample")
+    # print("Timeouts of T-dDNNFs sample on randgen: ",
+    #       timeout_to_str(randgen_sample_points))
+    # randgen_sdd_fp_points = get_randgen_bench_data(
+    #     "T-SDD", "benchmarks/randgen/output_sdd_fp")
+    # print("Timeouts of T-SDDs full partial on randgen: ",
+    #       timeout_to_str(randgen_sdd_fp_points))
 
-    randgen_allsmt_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/randgen/tmp_total")
-    randgen_allsmt_partial_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/randgen/tmp_fp")
-    randgen_allsmt_tabular_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/randgen/tmp_tabular_total")
-    old_randgen_allsmt_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/randgen/old_tmp_total")
-    old_randgen_allsmt_total_partial_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/randgen/old_tmp_partial")
+    # randgen_allsmt_total_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/randgen/tmp_total")
+    # randgen_allsmt_partial_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/randgen/tmp_fp")
+    # randgen_allsmt_tabular_total_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/randgen/tmp_tabular_total")
+    # old_randgen_allsmt_total_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/randgen/old_tmp_total")
+    # old_randgen_allsmt_total_partial_points = get_ldd_randgen_bench_data(
+    #     "NoDD", "benchmarks/randgen/old_tmp_partial")
     
-    time_points = get_allsmt_time_points(
-        randgen_allsmt_total_points,randgen_allsmt_tabular_total_points
-    )
-    build_time_graph(time_points, "MathSAT", "Tabular",
-                        "plots/randgen/allsmt_total_vs_tabular_total_time.pdf",
-                        secondary_ponts=([10,20],[20,10]))
+    # time_points = get_allsmt_time_points(
+    #     randgen_allsmt_total_points,randgen_allsmt_tabular_total_points
+    # )
+    # build_time_graph(time_points, "MathSAT", "Tabular",
+    #                     "plots/randgen/allsmt_total_vs_tabular_total_time.pdf",
+    #                     secondary_ponts=([10,20],[20,10]))
 
     randgen_ddnnf_c2d_total_points = get_randgen_bench_data(
         "T-dDNNF", "benchmarks/randgen/output_tddnnf_c2d_total_new")
@@ -1394,6 +1459,12 @@ def main() -> None:
           timeout_to_str(randgen_ddnnf_d4_total_points))
     randgen_ddnnf_d4_total_not_quantified_points = get_randgen_bench_data(
         "T-dDNNF", "benchmarks/randgen/output_tddnnf_d4_not_quantified_total_new")
+    print("Timeouts of T-dDNNFs d4 (no quant) on randgen: ",
+          timeout_to_str(randgen_ddnnf_d4_total_not_quantified_points))
+    
+    randgen_unsat_points = get_list_of_unsat_problems(
+        "benchmarks/randgen/output_bdd")
+    print(randgen_unsat_points)
 
     # # T-dDNNF size vs phi size
     # size_points = get_phi_size_vs_dd_nodes_points(
@@ -1453,28 +1524,32 @@ def main() -> None:
     
     # # print(randgen_ddnnf_c2d_total_points)
     # # # print(randgen_ddnnf_abstraction_c2d_points)
-    time_points = get_time_points(
-        randgen_ddnnf_c2d_total_points, randgen_ddnnf_abstraction_c2d_points)
-    time_points_dd = get_dd_time_points(
-        randgen_ddnnf_c2d_total_points, randgen_ddnnf_abstraction_c2d_points,
-        timeout_value=time_points[2])
-    build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
-                     "plots/randgen/ddnnf_c2d_vs_ddnnf_abstr_time.pdf",
-                     secondary_ponts=time_points_dd)
+    # time_points = get_time_points(
+    #     randgen_ddnnf_c2d_total_points, randgen_ddnnf_abstraction_c2d_points)
+    # time_points_dd = get_dd_time_points(
+    #     randgen_ddnnf_c2d_total_points, randgen_ddnnf_abstraction_c2d_points,
+    #     timeout_value=time_points[2])
+    # build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/randgen/ddnnf_c2d_vs_ddnnf_abstr_time.pdf")
+    #                 #  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/randgen/ddnnf_c2d_vs_ddnnf_abstr_dd_time.pdf")
     
-    # size_points = get_nodes_points(
+    # # size_points = get_nodes_points(
+    # #     randgen_ddnnf_d4_total_points, randgen_ddnnf_abstraction_d4_points)
+    # # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
+    # #                  "plots/randgen/ddnnf_d4_vs_ddnnf_abstr_size.pdf")
+    
+    # time_points = get_time_points(
     #     randgen_ddnnf_d4_total_points, randgen_ddnnf_abstraction_d4_points)
-    # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
-    #                  "plots/randgen/ddnnf_d4_vs_ddnnf_abstr_size.pdf")
-    
-    time_points = get_time_points(
-        randgen_ddnnf_d4_total_points, randgen_ddnnf_abstraction_d4_points)
-    time_points_dd = get_dd_time_points(
-        randgen_ddnnf_d4_total_points, randgen_ddnnf_abstraction_d4_points,
-        timeout_value=time_points[2])
-    build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
-                     "plots/randgen/ddnnf_d4_vs_ddnnf_abstr_time.pdf",
-                     secondary_ponts=time_points_dd)
+    # time_points_dd = get_dd_time_points(
+    #     randgen_ddnnf_d4_total_points, randgen_ddnnf_abstraction_d4_points,
+    #     timeout_value=time_points[2])
+    # build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/randgen/ddnnf_d4_vs_ddnnf_abstr_time.pdf")
+    #                 #  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/randgen/ddnnf_d4_vs_ddnnf_abstr_dd_time.pdf")
     
     # size_points = get_phi_size_vs_dd_nodes_points(
     #     randgen_abstraction_bdd_points)
@@ -1602,14 +1677,16 @@ def main() -> None:
     # time_points_dd = get_dd_time_points(
     #     randgen_bdds_points, randgen_abstraction_bdd_points,
     #     timeout_value=time_points[2])
-    # size_points = get_nodes_points(
-    #     randgen_bdds_points, randgen_abstraction_bdd_points)
-    # # models_points = get_dd_models_points(
+    # # size_points = get_nodes_points(
     # #     randgen_bdds_points, randgen_abstraction_bdd_points)
+    # # # models_points = get_dd_models_points(
+    # # #     randgen_bdds_points, randgen_abstraction_bdd_points)
     # build_time_graph(time_points, "T-OBDD", "Abs. BDD",
-    #                  "plots/randgen/abstr_bdd_vs_tbdd_time.pdf",
-    #                  secondary_ponts=time_points_dd)
-    # build_size_graph(size_points, "T-OBDD", "Abs. BDD",
+    #                  "plots/randgen/abstr_bdd_vs_tbdd_time.pdf")
+    # #                  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-OBDD", "Abs. BDD",
+    #                  "plots/randgen/abstr_bdd_vs_tbdd_dd_time.pdf")
+    # # build_size_graph(size_points, "T-OBDD", "Abs. BDD",
     #                  "plots/randgen/abstr_bdd_vs_tbdd_size.pdf")
     # build_models_graph(models_points, "T-BDD", "Abs. BDD",
     #                    "plots/randgen/abstr_bdd_vs_tbdd_models.pdf")
@@ -1634,108 +1711,123 @@ def main() -> None:
     # time_points_dd = get_dd_time_points(
     #     randgen_sdds_points, randgen_abstraction_sdd_points,
     #     timeout_value=time_points[2])
-    # size_points = get_nodes_points(
-    #     randgen_sdds_points, randgen_abstraction_sdd_points)
+    # # size_points = get_nodes_points(
+    # #     randgen_sdds_points, randgen_abstraction_sdd_points)
     # build_time_graph(time_points, "T-SDD", "Abs. SDD",
-    #                  "plots/randgen/abstr_sdd_vs_tsdd_time.pdf",
-    #                  secondary_ponts=time_points_dd)
+    #                  "plots/randgen/abstr_sdd_vs_tsdd_time.pdf")
+    # #                  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-SDD", "Abs. SDD",
+    #                  "plots/randgen/abstr_sdd_vs_tsdd_dd_time.pdf")
     # build_size_graph(size_points, "T-SDD", "Abs. SDD",
     #                  "plots/randgen/abstr_sdd_vs_tsdd_size.pdf")
 
     # --------------------------------------------------------------
     # SMTLIB QF RDL
 
-    qfrdl_ldds_points = get_smtlib_bench_data(
-        "LDD", "benchmarks/smtlib/output_ldd/non-incremental/QF_RDL")
-    print("QF RDL size: ", len(qfrdl_ldds_points))
-    print("Timeouts of LDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ldds_points))
-    qfrdl_bdds_points = get_smtlib_bench_data(
-        "T-BDD", "benchmarks/smtlib/output_tbdd_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-BDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_bdds_points))
-    qfrdl_bdds_fp_points = get_smtlib_bench_data(
-        "T-BDD", "benchmarks/smtlib/output_bdd_noeqsplit_full_partial/non-incremental/QF_RDL")
-    print("Timeouts of partial T-BDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_bdds_fp_points))
-    qfrdl_abstraction_bdd_points = get_smtlib_bench_data(
-        "Abstraction BDD", "benchmarks/smtlib/output_abstraction_bdd/non-incremental/QF_RDL")
-    print("Timeouts of Abs-BDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_abstraction_bdd_points))
-    qfrdl_sdds_points = get_smtlib_bench_data(
-        "T-SDD", "benchmarks/smtlib/output_tsdd_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-SDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_sdds_points))
-    qfrdl_abstraction_sdd_points = get_smtlib_bench_data(
-        "Abstraction SDD", "benchmarks/smtlib/output_abstraction_sdd/non-incremental/QF_RDL")
-    print("Timeouts of Abs-SDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_abstraction_sdd_points))
-    qfrdl_bdds_noeqsplit_points = get_smtlib_bench_data(
-        "T-BDD", "benchmarks/smtlib/output_bdd_noeqsplit/non-incremental/QF_RDL")
-    print("Timeouts of T-BDDs no eq split on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_bdds_noeqsplit_points))
-    # qfrdl_ddnnf_total_points = get_smtlib_bench_data(
-    #     "T-dDNNF", "benchmarks/smtlib/output_ddnnf_total/non-incremental/QF_RDL")
-    # print("Timeouts of T-dDNNFs total on smtlib QF RDL: ", timeout_to_str(qfrdl_ddnnf_total_points))
-    qfrdl_ddnnf_partial_points = get_smtlib_bench_data(
-        "T-dDNNF", "benchmarks/smtlib/output_ddnnf_full_partial/non-incremental/QF_RDL")
-    print("Timeouts of T-dDNNFs partial on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_partial_points))
-    qfrdl_ddnnf_abstraction_points = get_smtlib_bench_data(
-        "Abstraction dDNNF", "benchmarks/smtlib/output_ddnnf_abstract/non-incremental/QF_RDL")
-    print("Timeouts of Abstraction dDNNFs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_abstraction_points))
-    qfrdl_sdd_full_partial_points = get_smtlib_bench_data(
-        "T-SDD", "benchmarks/smtlib/output_sdd_full_partial/non-incremental/QF_RDL")
-    print("Timeouts of full partial T-SDDs on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_sdd_full_partial_points))
-    qfrdl_allsmt_total_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/smtlib/tmp_noeqsplit_total/non-incremental/QF_RDL")
-    qfrdl_allsmt_partial_points = get_ldd_randgen_bench_data(
-        "NoDD", "benchmarks/smtlib/tmp_noeqsplit_full_partial/non-incremental/QF_RDL")
+    # qfrdl_ldds_points = get_smtlib_bench_data(
+    #     "LDD", "benchmarks/smtlib/output_ldd/non-incremental/QF_RDL")
+    # print("QF RDL size: ", len(qfrdl_ldds_points))
+    # print("Timeouts of LDDs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ldds_points))
+    # qfrdl_bdds_points = get_smtlib_bench_data(
+    #     "T-BDD", "benchmarks/smtlib/output_tbdd_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-BDDs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_bdds_points))
+    # # qfrdl_bdds_fp_points = get_smtlib_bench_data(
+    # #     "T-BDD", "benchmarks/smtlib/output_bdd_noeqsplit_full_partial/non-incremental/QF_RDL")
+    # # print("Timeouts of partial T-BDDs on smtlib QF RDL: ",
+    # #       timeout_to_str(qfrdl_bdds_fp_points))
+    # qfrdl_abstraction_bdd_points = get_smtlib_bench_data(
+    #     "Abstraction BDD", "benchmarks/smtlib/output_abstraction_bdd/non-incremental/QF_RDL")
+    # print("Timeouts of Abs-BDDs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_abstraction_bdd_points))
+    # qfrdl_sdds_points = get_smtlib_bench_data(
+    #     "T-SDD", "benchmarks/smtlib/output_tsdd_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-SDDs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_sdds_points))
+    # qfrdl_abstraction_sdd_points = get_smtlib_bench_data(
+    #     "Abstraction SDD", "benchmarks/smtlib/output_abstraction_sdd/non-incremental/QF_RDL")
+    # print("Timeouts of Abs-SDDs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_abstraction_sdd_points))
+    # # qfrdl_sdd_full_partial_points = get_smtlib_bench_data(
+    # #     "T-SDD", "benchmarks/smtlib/output_sdd_full_partial/non-incremental/QF_RDL")
+    # # print("Timeouts of full partial T-SDDs on smtlib QF RDL: ",
+    # #       timeout_to_str(qfrdl_sdd_full_partial_points))
+    # # qfrdl_bdds_noeqsplit_points = get_smtlib_bench_data(
+    # #     "T-BDD", "benchmarks/smtlib/output_bdd_noeqsplit/non-incremental/QF_RDL")
+    # # print("Timeouts of T-BDDs no eq split on smtlib QF RDL: ",
+    # #       timeout_to_str(qfrdl_bdds_noeqsplit_points))
+    # # qfrdl_ddnnf_total_points = get_smtlib_bench_data(
+    # #     "T-dDNNF", "benchmarks/smtlib/output_ddnnf_total/non-incremental/QF_RDL")
+    # # print("Timeouts of T-dDNNFs total on smtlib QF RDL: ", timeout_to_str(qfrdl_ddnnf_total_points))
+    # # qfrdl_ddnnf_partial_points = get_smtlib_bench_data(
+    # #     "T-dDNNF", "benchmarks/smtlib/output_ddnnf_full_partial/non-incremental/QF_RDL")
+    # # print("Timeouts of T-dDNNFs partial on smtlib QF RDL: ",
+    # #       timeout_to_str(qfrdl_ddnnf_partial_points))
+    # qfrdl_ddnnf_abstraction_points = get_smtlib_bench_data(
+    #     "Abstraction dDNNF", "benchmarks/smtlib/output_ddnnf_abstract/non-incremental/QF_RDL")
+    # print("Timeouts of Abstraction dDNNFs on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ddnnf_abstraction_points))
+    # # qfrdl_allsmt_total_points = get_ldd_randgen_bench_data(
+    # #     "NoDD", "benchmarks/smtlib/tmp_noeqsplit_total/non-incremental/QF_RDL")
+    # # qfrdl_allsmt_partial_points = get_ldd_randgen_bench_data(
+    # #     "NoDD", "benchmarks/smtlib/tmp_noeqsplit_full_partial/non-incremental/QF_RDL")
 
-    qfrdl_ddnnf_c2d_total_points = get_smtlib_bench_data(
-        "T-dDNNF", "benchmarks/smtlib/output_tddnnf_c2d_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-dDNNFs c2d on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_c2d_total_points))
-    qfrdl_ddnnf_c2d_total_not_quantified_points = get_smtlib_bench_data(
-        "T-dDNNF", "benchmarks/smtlib/output_tddnnf_c2d_not_quantified_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-dDNNFs c2d (no quant) on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_c2d_total_not_quantified_points))
-    qfrdl_ddnnf_d4_total_points = get_smtlib_bench_data(
-        "T-dDNNF", "benchmarks/smtlib/output_tddnnf_d4_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-dDNNFs d4 on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_d4_total_points))
-    qfrdl_ddnnf_d4_total_not_quantified_points = get_smtlib_bench_data(
-        "T-dDNNF", "benchmarks/smtlib/output_tddnnf_d4_not_quantified_total_new/non-incremental/QF_RDL")
-    print("Timeouts of T-dDNNFs d4 (no quant) on smtlib QF RDL: ",
-          timeout_to_str(qfrdl_ddnnf_d4_total_not_quantified_points))
+    # qfrdl_ddnnf_c2d_total_points = get_smtlib_bench_data(
+    #     "T-dDNNF", "benchmarks/smtlib/output_tddnnf_c2d_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-dDNNFs c2d on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ddnnf_c2d_total_points))
+    # qfrdl_ddnnf_c2d_total_not_quantified_points = get_smtlib_bench_data(
+    #     "T-dDNNF", "benchmarks/smtlib/output_tddnnf_c2d_not_quantified_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-dDNNFs c2d (no quant) on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ddnnf_c2d_total_not_quantified_points))
+    # qfrdl_ddnnf_d4_total_points = get_smtlib_bench_data(
+    #     "T-dDNNF", "benchmarks/smtlib/output_tddnnf_d4_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-dDNNFs d4 on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ddnnf_d4_total_points))
+    # qfrdl_ddnnf_d4_total_not_quantified_points = get_smtlib_bench_data(
+    #     "T-dDNNF", "benchmarks/smtlib/output_tddnnf_d4_not_quantified_total_new/non-incremental/QF_RDL")
+    # print("Timeouts of T-dDNNFs d4 (no quant) on smtlib QF RDL: ",
+    #       timeout_to_str(qfrdl_ddnnf_d4_total_not_quantified_points))
+    
+    # qfrdl_abstraction_ddnnf_c2d_points = get_smtlib_bench_data(
+    #     "Abstraction dDNNF", "benchmarks/smtlib/output_abstraction_ddnnf_c2d/non-incremental/QF_RDL")
+    # print("Timeouts of Abstraction dDNNFs c2d on smtlib QF RDL: ",
+    #         timeout_to_str(qfrdl_abstraction_ddnnf_c2d_points))
+    # qfrdl_abstraction_ddnnf_d4_points = get_smtlib_bench_data(
+    #     "Abstraction dDNNF", "benchmarks/smtlib/output_abstraction_ddnnf_d4/non-incremental/QF_RDL")
+    # print("Timeouts of Abstraction dDNNFs d4 on smtlib QF RDL: ",
+    #         timeout_to_str(qfrdl_abstraction_ddnnf_d4_points))
 
-    # # T-dDNNF size vs phi size
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     qfrdl_ddnnf_c2d_total_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
-    #                                 "plots/smtlib/QF_RDL/ddnnf_c2d_phi_size_vs_dd_size.pdf")
+    # qfrdl_unsat_points = get_list_of_unsat_problems(
+    #     "benchmarks/smtlib/output_tbdd_total_new/non-incremental/QF_RDL")
+    # print(qfrdl_unsat_points)
 
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     qfrdl_ddnnf_c2d_total_not_quantified_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
-    #                                 "plots/smtlib/QF_RDL/ddnnf_c2d_phi_size_vs_dd_size_no_quant.pdf")
+    # # # T-dDNNF size vs phi size
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     qfrdl_ddnnf_c2d_total_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
+    # #                                 "plots/smtlib/QF_RDL/ddnnf_c2d_phi_size_vs_dd_size.pdf")
 
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     qfrdl_ddnnf_d4_total_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
-    #                                 "plots/smtlib/QF_RDL/ddnnf_d4_phi_size_vs_dd_size.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     qfrdl_ddnnf_c2d_total_not_quantified_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
+    # #                                 "plots/smtlib/QF_RDL/ddnnf_c2d_phi_size_vs_dd_size_no_quant.pdf")
 
-    # size_points = get_phi_size_vs_dd_nodes_points(
-    #     qfrdl_ddnnf_d4_total_not_quantified_points)
-    # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
-    #                                 "plots/smtlib/QF_RDL/ddnnf_d4_phi_size_vs_dd_size_no_quant.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     qfrdl_ddnnf_d4_total_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
+    # #                                 "plots/smtlib/QF_RDL/ddnnf_d4_phi_size_vs_dd_size.pdf")
 
-    # time_points = get_dd_time_points(
-    #     qfrdl_ddnnf_d4_total_points, qfrdl_ddnnf_d4_total_not_quantified_points)
-    # build_time_graph(time_points, "Total enum. T-dDNNF", "Total enum. T-dDNNF (no quant)",
-    #                  "plots/smtlib/QF_RDL/ddnnf_d4_total_vs_no_quant_time.pdf")
+    # # size_points = get_phi_size_vs_dd_nodes_points(
+    # #     qfrdl_ddnnf_d4_total_not_quantified_points)
+    # # build_phi_size_vs_dd_size_graph(size_points, "Phi size", "DD size",
+    # #                                 "plots/smtlib/QF_RDL/ddnnf_d4_phi_size_vs_dd_size_no_quant.pdf")
+
+    # # time_points = get_dd_time_points(
+    # #     qfrdl_ddnnf_d4_total_points, qfrdl_ddnnf_d4_total_not_quantified_points)
+    # # build_time_graph(time_points, "Total enum. T-dDNNF", "Total enum. T-dDNNF (no quant)",
+    # #                  "plots/smtlib/QF_RDL/ddnnf_d4_total_vs_no_quant_time.pdf")
     
     # time_points = get_dd_time_points(
     #     qfrdl_ddnnf_c2d_total_points, qfrdl_ddnnf_c2d_total_not_quantified_points)
@@ -1746,7 +1838,43 @@ def main() -> None:
     #     qfrdl_bdds_points
     # )
     # build_size_graph(size_points, "Phi size", "Amount of lemmas",
-    #                  "plots/smtlib/QF_RDL/phi_size_vs_lemmas.pdf")
+    #                  "plots/smtlib/QF_RDL/phi_size_vs_lemmas.pdf",
+    #                  no_central_diagonal=True)
+    
+    # time_points = get_time_points(
+    #     qfrdl_ddnnf_c2d_total_points, qfrdl_abstraction_ddnnf_c2d_points,
+    #     unsat_sources=qfrdl_unsat_points)
+    # time_points_dd = get_dd_time_points(
+    #     qfrdl_ddnnf_c2d_total_points, qfrdl_abstraction_ddnnf_c2d_points,
+    #     timeout_value=time_points[2],
+    #     unsat_sources=qfrdl_unsat_points)
+    # build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_c2d_vs_ddnnf_abstr_time.pdf")
+    # build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_c2d_vs_ddnnf_abstr_dd_time.pdf")
+    
+    # size_points = get_nodes_points(
+    #     qfrdl_ddnnf_c2d_total_points, qfrdl_abstraction_ddnnf_c2d_points)
+    # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_c2d_vs_ddnnf_abstr_size.pdf")
+    
+    # time_points = get_time_points(
+    #     qfrdl_ddnnf_d4_total_points, qfrdl_abstraction_ddnnf_d4_points,
+    #     unsat_sources=qfrdl_unsat_points)
+    # time_points_dd = get_dd_time_points(
+    #     qfrdl_ddnnf_d4_total_points, qfrdl_abstraction_ddnnf_d4_points,
+    #     timeout_value=time_points[2],
+    #     unsat_sources=qfrdl_unsat_points)
+    # build_time_graph(time_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_d4_vs_ddnnf_abstr_time.pdf")
+    #                 #  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_d4_vs_ddnnf_abstr_dd_time.pdf")
+    
+    # size_points = get_nodes_points(
+    #     qfrdl_ddnnf_d4_total_points, qfrdl_abstraction_ddnnf_d4_points)
+    # build_size_graph(size_points, "T-dDNNF", "Abstr. dDNNF",
+    #                  "plots/smtlib/QF_RDL/ddnnf_d4_vs_ddnnf_abstr_size.pdf")
 
     # # allsmt time total vs partial
     # # allsmt_points = get_allsmt_time_points(
@@ -1827,20 +1955,24 @@ def main() -> None:
 
     # # print("QF RDL LDD vs BDD graphs")
     # time_points = get_time_points(
-    #     qfrdl_bdds_points, qfrdl_ldds_points)
+    #     qfrdl_bdds_points, qfrdl_ldds_points,
+    #     unsat_sources=qfrdl_unsat_points)
     # time_points_dd = get_dd_time_points(
     #     qfrdl_bdds_points, qfrdl_ldds_points,
-    #     timeout_value=time_points[2])
-    # size_points = get_nodes_points(
-    #     qfrdl_bdds_points, qfrdl_ldds_points)
+    #     timeout_value=time_points[2],
+    #     unsat_sources=qfrdl_unsat_points)
+    # # size_points = get_nodes_points(
+    # #     qfrdl_bdds_points, qfrdl_ldds_points)
     # # models_points = get_dd_models_points(
     # #     qfrdl_bdds_points, qfrdl_ldds_points)
     # build_time_graph(time_points, "T-OBDD", "LDD",
-    #                  "plots/smtlib/QF_RDL/ldd_vs_tbdd_time.pdf",
-    #                  secondary_ponts=time_points_dd)
-    # build_size_graph(size_points, "T-OBDD", "LDD",
-    #                  "plots/smtlib/QF_RDL/ldd_vs_tbdd_size.pdf")
-    # build_models_graph(models_points, "T-OBDD", "LDD",
+    #                  "plots/smtlib/QF_RDL/ldd_vs_tbdd_time.pdf")
+    # build_time_graph(time_points_dd, "T-OBDD", "LDD",
+    #                  "plots/smtlib/QF_RDL/ldd_vs_tbdd_dd_time.pdf")
+    #                 #  secondary_ponts=time_points_dd)
+    # # build_size_graph(size_points, "T-OBDD", "LDD",
+    # #                  "plots/smtlib/QF_RDL/ldd_vs_tbdd_size.pdf")
+    # # build_models_graph(models_points, "T-OBDD", "LDD",
     #                    "plots/smtlib/QF_RDL/ldd_vs_tbdd_models.pdf")
 
     # # print("QF RDL Opt vs No Opt graphs")
@@ -1869,17 +2001,21 @@ def main() -> None:
 
     # # # print("QF RDL BDD graphs")
     # time_points = get_time_points(
-    #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points)
-    # dd_time_points = get_dd_time_points(
     #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points,
-    #     timeout_value=time_points[2])
-    # size_points = get_nodes_points(
-    #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points)
+    #     unsat_sources=qfrdl_unsat_points)
+    # time_points_dd = get_dd_time_points(
+    #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points,
+    #     timeout_value=time_points[2],
+    #     unsat_sources=qfrdl_unsat_points)
+    # # size_points = get_nodes_points(
+    # #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points)
     # # models_points = get_dd_models_points(
     # #     qfrdl_bdds_points, qfrdl_abstraction_bdd_points)
     # build_time_graph(time_points, "T-OBDD", "Abs. BDD",
-    #                  "plots/smtlib/QF_RDL/abstr_bdd_vs_tbdd_time.pdf",
-    #                  secondary_ponts=dd_time_points)
+    #                  "plots/smtlib/QF_RDL/abstr_bdd_vs_tbdd_time.pdf")
+    # build_time_graph(time_points_dd, "T-OBDD", "Abs. BDD",
+    #                  "plots/smtlib/QF_RDL/abstr_bdd_vs_tbdd_dd_time.pdf")
+                    #  secondary_ponts=dd_time_points)
     # build_size_graph(size_points, "T-OBDD", "Abs. BDD",
     #                  "plots/smtlib/QF_RDL/abstr_bdd_vs_tbdd_size.pdf")
     # # build_models_graph(models_points, "T-OBDD", "Abs. BDD",
@@ -1887,15 +2023,19 @@ def main() -> None:
 
     # # print("QF RDL SDD graphs")
     # time_points = get_time_points(
-    #     qfrdl_sdds_points, qfrdl_abstraction_sdd_points)
+    #     qfrdl_sdds_points, qfrdl_abstraction_sdd_points,
+    #     unsat_sources=qfrdl_unsat_points)
     # time_points_dd = get_dd_time_points(
     #     qfrdl_sdds_points, qfrdl_abstraction_sdd_points,
-    #     timeout_value=time_points[2])
-    # size_points = get_nodes_points(
-    #     qfrdl_sdds_points, qfrdl_abstraction_sdd_points)
+    #     timeout_value=time_points[2],
+    #     unsat_sources=qfrdl_unsat_points)
+    # # size_points = get_nodes_points(
+    # #     qfrdl_sdds_points, qfrdl_abstraction_sdd_points)
     # build_time_graph(time_points, "T-SDD", "Abs. SDD",
-    #                  "plots/smtlib/QF_RDL/abstr_sdd_vs_tsdd_time.pdf",
-    #                  secondary_ponts=time_points_dd)
+    #                  "plots/smtlib/QF_RDL/abstr_sdd_vs_tsdd_time.pdf")
+    # #                  secondary_ponts=time_points_dd)
+    # build_time_graph(time_points_dd, "T-SDD", "Abs. SDD",
+    #                  "plots/smtlib/QF_RDL/abstr_sdd_vs_tsdd_dd_time.pdf")
     # build_size_graph(size_points, "T-SDD", "Abs. SDD",
     #                  "plots/smtlib/QF_RDL/abstr_sdd_vs_tsdd_size.pdf")
 

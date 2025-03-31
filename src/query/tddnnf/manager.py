@@ -73,6 +73,18 @@ class DDNNFQueryManager(QueryInterface):
         result = (models > 0)
 
         return result, 0
+    
+    def _check_consistency_body(self) -> Tuple[bool, float]:
+        """function to check if the encoded formula is consistent
+
+        Returns:
+            bool: True if the formula is consistent, False otherwise
+        """
+        # TODO()!: change consistency check 
+        models = self._count_models_body(self.d4_file)
+        result = (models > 0)
+
+        return result, 0
 
     def _check_validity(self) -> Tuple[bool, float]:
         """function to check if the encoded formula is valid
@@ -337,25 +349,25 @@ class DDNNFQueryManager(QueryInterface):
         """
 
         raise UnsupportedQueryException(
-            "T-dDNNF do not support polytime entailment checking")
+            "T-dDNNFs do not support polytime entailment checking")
 
     def conjunction(self, data_folder: str, output_path: str | None = None) -> None:
         """
         raises UnsupportedQueryException
         """
         raise UnsupportedQueryException(
-            "T-dDNNF do not support polytime conjunction")
+            "T-dDNNFs do not support polytime conjunction")
 
     def disjunction(self, data_folder: str, output_path: str | None = None) -> None:
         """
         raises UnsupportedQueryException
         """
         raise UnsupportedQueryException(
-            "T-dDNNF do not support polytime disjunction")
+            "T-dDNNFs do not support polytime disjunction")
 
     def negation(self, output_path: str | None = None) -> None:
         """
         raises UnsupportedQueryException
         """
         raise UnsupportedQueryException(
-            "T-dDNNF do not support polytime negation")
+            "T-dDNNFs do not support polytime negation")
