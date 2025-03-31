@@ -38,6 +38,16 @@ def clean_tmp_file():
     if path.exists(TEMPORARY_QUERY_INPUT_FILE):
         rmv(TEMPORARY_QUERY_INPUT_FILE)
 
+def save_details(details:dict, file_path: str):
+    """save the details to a file
+    
+    Args:
+        details (dict): the details to save
+        file_path (str): the path to the file to save the details to
+    """
+    with open(file_path, "w", encoding='utf8') as out:
+        json.dump(details,out)
+
 def _get_c2d_manager(input_folder: str) -> C2D_DDNNFQueryManager:
     """initialize a C2D manager from the input folder"""
     with open(path.join(input_folder, "quantification.exist"), "r", encoding='utf8') as file:
@@ -194,7 +204,8 @@ def main():
     if args.negation:
         query_manager.negation(args.save_negation)
 
-    print(query_manager.get_details())
+    if args.details is not None:
+        save_details(query_manager.get_details(),args.details)
 
     clean_tmp_file()
 

@@ -23,6 +23,7 @@ class QueryOptions:
     entail: str | None
     random: int | None
     seed: int | None
+    details: str | None
 
     def __init__(self, args: argparse.Namespace):
         self.load_data = args.load_data
@@ -45,6 +46,7 @@ class QueryOptions:
         self.save_negation = args.save_negation
         self.entail = args.entail
         self.random = args.random
+        self.details = args.details
         try:
             self.seed = int(args.seed) if args.seed is not None else None
         except ValueError:
@@ -127,6 +129,11 @@ def get_args() -> QueryOptions:
         "-s",
         "--seed",
         help="select a seed for the random selection",
+        type=str)
+    parser.add_argument(
+        "-d",
+        "--details",
+        help="save the details for computation in the specified file",
         type=str)
     args = parser.parse_args()
     return QueryOptions(args)
