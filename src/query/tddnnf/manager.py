@@ -72,19 +72,42 @@ class DDNNFQueryManager(QueryInterface):
         models = self._count_models_body(self.d4_file)
         result = (models > 0)
 
-        return result, 0
+        return self._check_consistency_body(self.d4_file)
     
-    def _check_consistency_body(self) -> Tuple[bool, float]:
+    def _check_consistency_body(self, d4_file:str) -> Tuple[bool, float]:
         """function to check if the encoded formula is consistent
 
+        Args:
+            d4_file (str): the path to the d4 file
         Returns:
             bool: True if the formula is consistent, False otherwise
         """
         # TODO()!: change consistency check 
-        models = self._count_models_body(self.d4_file)
-        result = (models > 0)
+        command = [_DECDNNF_PATH, "compute-model", "-i",d4_file]
+        try:
+            sat_command = " ".join(command)
+            process_data = subprocess.check_output(
+                sat_command,
+                shell=True,
+                text=True)
+        except subprocess.CalledProcessError as e:
+            raise RuntimeError(
+                "An error occurred while checking satisfiability") from e
+        is_sat = None
+        # find not empty output line that does not start with "["
+        for line in process_data.split("\n"):
+            if line and line.startswith("s"):
+                sat_result = line[2:]
+                if(sat_result == "SATISFIABLE"):
+                    is_sat = True
+                elif(sat_result == "UNSATISFIABLE"):
+                    is_sat = False
+                break
+        if is_sat is None:
+            raise RuntimeError(
+                "An error occurred while checking satisfiability")
 
-        return result, 0
+        return is_sat, 0
 
     def _check_validity(self) -> Tuple[bool, float]:
         """function to check if the encoded formula is valid
@@ -137,10 +160,10 @@ class DDNNFQueryManager(QueryInterface):
         # CONDITION OVER CLAUSE ITEMS NEGATED
         self._condition_all_variables(
             clause_items_negated, _CONDITION_D4_OUTPUT_OPTION, _TEMPORARY_CONDITIONED_FILE)
-        # COUNT MODELS OF CONDITIONED T-dDNNF
-        conditioned_mc = self._count_models_body(_TEMPORARY_CONDITIONED_FILE)
-        # IF THE CONDITIONED T-dDNNF HAS 0 MODELS, THEN THE FORMULA ENTAILS THE CLAUSE
-        entailment = (conditioned_mc == 0)
+        # CHECK IF THE CONDITIONED T-dDNNF IS SAT
+        is_sat, _time = self._check_consistency_body(_TEMPORARY_CONDITIONED_FILE)
+        # IF THE CONDITIONED T-dDNNF IS SAT, THEN THE FORMULA DOES NOT ENTAIL THE CLAUSE
+        entailment = not is_sat
 
         self._clear_tmp_file()
 
