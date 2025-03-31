@@ -50,3 +50,15 @@ To use the query tool on T-d-DNNFs, remmeber to update your ```.env``` file.
 You can find the implementation for d-DNNF condition at [this link](https://github.com/MaxMichelutti/dDNNF-Query).
 
 You can find the implementation for Dec d-DNNF [here](https://github.com/crillab/decdnnf_rs).
+
+## Running the Query Tool
+
+To run the query tool use the following command:
+
+```
+    python3 knowledge_compiler.py --load_data DATA_FOLDER
+```
+
+You can add options to specify which query to run, otherwise no query will actually run.
+
+To get a list of all available queries you can use the ```-h``` option.
