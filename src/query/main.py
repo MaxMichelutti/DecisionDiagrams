@@ -168,7 +168,7 @@ def main():
     if args.validity:
         query_manager.check_validity()
 
-    if args.entail_clause is not None:
+    if len(args.entail_clause)>0:
         if args.random:
             query_manager.check_entail_clause_random(args.seed)
         else:

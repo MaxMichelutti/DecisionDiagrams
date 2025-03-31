@@ -1,6 +1,7 @@
 """module to handle the options for the main compiled formula quering tool"""
 import argparse
 from dataclasses import dataclass
+from typing import List
 
 @dataclass
 class QueryOptions:
@@ -8,7 +9,7 @@ class QueryOptions:
     load_data: str
     consistency: bool
     validity: bool
-    entail_clause: str | None
+    entail_clause: List[str]
     implicant: str | None
     count: bool
     enumerate: bool
@@ -32,7 +33,7 @@ class QueryOptions:
             self.load_data = self.load_data[:-1]
         self.consistency = args.consistency
         self.validity = args.validity
-        self.entail_clause = args.entail_clause
+        self.entail_clause = args.entail_clause if args.entail_clause is not None else []
         self.implicant = args.implicant
         self.count = args.count
         self.enumerate = args.enumerate
@@ -71,6 +72,7 @@ def get_args() -> QueryOptions:
     parser.add_argument(
         "--entail_clause",
         help="Query the compiled formula to check if the encoded formula entails the clause from the specified smt2 file",
+        nargs='+',
         type=str)
     parser.add_argument(
         "--implicant",

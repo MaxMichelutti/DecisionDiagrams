@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 import time
+import os
 from typing import Dict, List, Tuple, final
 
 from pysmt.fnode import FNode
@@ -135,22 +136,31 @@ class QueryInterface(ABC):
         return clause
 
     @final
-    def check_entail_clause(self, clause_file: str) -> bool:
+    def check_entail_clause(self, clause_files: List[str]) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
 
         Args:
-            clause_file (str): the path to the smt2 file containing the clause to check
+            clause_file (List[str]): the path to the smt2 files containing the clauses to check
 
         Returns:
-            bool: True if the clause is entailed, False otherwise
+            List[bool|None]: For each clause, True if the clause is entailed, False otherwise, None if some error occurs
         """
-        clause = self._clause_file_can_entail(clause_file)
-        self.details["entailment clause"] = str(clause)
-        start_time = time.time()
-        result, load_time = self._check_entail_clause_body(clause)
-        self.details["clause entailment result"] = result
-        self.details["clause entailment time"] = time.time() - start_time - load_time
-        return result
+        self.details["entailment"] ={}
+        results = []
+        for clause_file in clause_files:
+            if not os.path.isfile(clause_file):
+                print(f"File not found: {clause_file}")
+                results.append(None)
+                continue
+            self.details["entailment"][clause_file] = {}
+            clause = self._clause_file_can_entail(clause_file)
+            self.details["entailment"][clause_file]["entailment clause"] = str(clause)
+            start_time = time.time()
+            result, load_time = self._check_entail_clause_body(clause)
+            self.details["entailment"][clause_file]["clause entailment result"] = result
+            self.details["entailment"][clause_file]["clause entailment time"] = time.time() - start_time - load_time
+            results.append(result)
+        return results
 
     @abstractmethod
     def _check_entail_clause_random_body(self, clause_items: List[Tuple[object, bool]]) -> Tuple[bool, float]:
