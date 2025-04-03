@@ -15,7 +15,7 @@ VALID_STRUCTURES = ["smt","tbdd","tsdd","tddnnf"]
 DDNNF_CPOMPILERS = ["c2d","d4"]
 
 # 10 minutes
-TIMEOUT=3600
+TIMEOUT_SECONDS=600
 
 
 def prepare_paths_ldd_randgen(output_folder: str, tmp_folder: str =  None) -> List[str]:
@@ -138,7 +138,7 @@ def main():
             continue
         output_file = input_file.replace("data",target)
         output_file = output_file.replace(".smt2", ".json")
-        command = f"{PYTHON_CALLABLE} {QUERY_MAIN_MODULE} --load_data {structure_location} --entail_clause {all_query_files_string} -d {output_file}"
+        command = f"{PYTHON_CALLABLE} {QUERY_MAIN_MODULE} --load_data {structure_location} --entail_clause {all_query_files_string} -d {output_file} -t {TIMEOUT_SECONDS}"
         result = os.system(command)
         if result != 0:
             print(f"Command failed with error code {result}")
