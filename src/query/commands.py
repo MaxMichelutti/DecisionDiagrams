@@ -25,6 +25,7 @@ class QueryOptions:
     random: int | None
     seed: int | None
     details: str | None
+    timeout:int
 
     def __init__(self, args: argparse.Namespace):
         self.load_data = args.load_data
@@ -48,10 +49,8 @@ class QueryOptions:
         self.entail = args.entail
         self.random = args.random
         self.details = args.details
-        try:
-            self.seed = int(args.seed) if args.seed is not None else None
-        except ValueError:
-            raise ValueError("The seed provided is not an integer")
+        self.timeout = args.timeout
+        self.seed = args.seed
 
 def get_args() -> QueryOptions:
     """Reads the args from the command line"""
@@ -131,11 +130,17 @@ def get_args() -> QueryOptions:
         "-s",
         "--seed",
         help="select a seed for the random selection",
-        type=str)
+        type=int)
     parser.add_argument(
         "-d",
         "--details",
         help="save the details for computation in the specified file",
         type=str)
+    parser.add_argument(
+        "-t",
+        "--timeout",
+        help="set a timeout for the query in seconds",
+        type=int,
+        default=600)
     args = parser.parse_args()
     return QueryOptions(args)

@@ -163,34 +163,34 @@ def main():
             "The folder where the compiled formula files are stored was not found, or some files are missing from it.")
 
     if args.consistency:
-        query_manager.check_consistency()
+        query_manager.check_consistency(args.timeout)
 
     if args.validity:
-        query_manager.check_validity()
+        query_manager.check_validity(args.timeout)
 
     if len(args.entail_clause)>0:
         if args.random:
             query_manager.check_entail_clause_random(args.seed)
         else:
-            query_manager.check_entail_clause(args.entail_clause)
+            query_manager.check_entail_clause(args.entail_clause, args.timeout)
 
     if args.implicant is not None:
         if args.random:
             query_manager.check_implicant_random(args.seed)
         else:
-            query_manager.check_implicant(args.implicant)
+            query_manager.check_implicant(args.implicant,args.timeout)
 
     if args.count:
-        query_manager.count_models()
+        query_manager.count_models(args.timeout)
 
     if args.enumerate:
-        query_manager.enumerate_models()
+        query_manager.enumerate_models(args.timeout)
 
     if args.condition is not None:
         if args.random:
             query_manager.condition_random(args.seed)
         else:
-            query_manager.condition(args.condition, args.save_conditioned)
+            query_manager.condition(args.condition, args.timeout,args.save_conditioned)
 
     if args.entail is not None:
         query_manager.check_entail(args.entail)

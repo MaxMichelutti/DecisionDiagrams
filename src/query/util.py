@@ -7,6 +7,21 @@ from pysmt.shortcuts import Not, Or
 from theorydd.solvers.solver import SMTEnumerator
 from theorydd.formula import get_normalized, get_atoms, save_phi, top, bottom, big_and, without_double_neg
 
+import signal
+from contextlib import contextmanager
+
+class LocalTimeoutException(Exception): pass
+
+@contextmanager
+def time_limit(seconds):
+    def signal_handler(signum, frame):
+        raise LocalTimeoutException("Timed out!")
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
 
 class UnsupportedQueryException(Exception):
     """Exception raised when an unsupported query is called"""

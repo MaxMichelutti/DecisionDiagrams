@@ -11,7 +11,7 @@ from pysmt.shortcuts import And, Or, Not
 from theorydd.solvers.mathsat_total import MathSATTotalEnumerator
 from theorydd.formula import get_normalized, get_atoms, without_double_neg, read_phi
 
-from src.query.util import is_clause, is_cube, is_term, normalize_refinement, select_random_items
+from src.query.util import is_clause, is_cube, is_term, normalize_refinement, select_random_items, time_limit, LocalTimeoutException
 
 
 class QueryInterface(ABC):
@@ -68,13 +68,23 @@ class QueryInterface(ABC):
         raise NotImplementedError()
 
     @final
-    def check_consistency(self) -> bool:
+    def check_consistency(self, timeout:int=600) -> bool:
         """function to check if the encoded formula is consistent
 
+        Args:
+            timeout (int) [600]: the timeout for the consistency check in seconds. Defaults to 600.
+
         Returns:
-            bool: True if the formula is consistent, False otherwise"""
+            bool: True if the formula is consistent, False otherwise
+        """
         start_time = time.time()
-        result, load_time = self._check_consistency()
+        try:
+            with time_limit(timeout):
+                result, load_time = self._check_consistency()
+        except LocalTimeoutException:
+            print("Timeout reached for consistency check")
+            self.details["consistency"] = "timeout"
+            return False
         self.details["consistency"] = result
         self.details["consistency time"] = time.time() - start_time - load_time
         return result
@@ -88,12 +98,22 @@ class QueryInterface(ABC):
         raise NotImplementedError()
 
     @final
-    def check_validity(self) -> bool:
+    def check_validity(self, timeout:int=600) -> bool:
         """function to check if the encoded formula is valid
+
+        Args:
+            timeout (int) [600]: the timeout for the validity check in seconds. Defaults to 600.
 
         Returns:
             bool: True if the formula is valid, False otherwise"""
         start_time = time.time()
+        try:
+            with time_limit(timeout):
+                result, _load_time = self._check_validity()
+        except LocalTimeoutException:
+            print("Timeout reached for validity check")
+            self.details["validity"] = "timeout"
+            return False
         result, loading_time = self._check_validity()
         self.details["validity"] = result
         self.details["validity time"] = time.time() - start_time - loading_time
@@ -136,11 +156,12 @@ class QueryInterface(ABC):
         return clause
 
     @final
-    def check_entail_clause(self, clause_files: List[str]) -> List[bool|None]:
+    def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
 
         Args:
             clause_file (List[str]): the path to the smt2 files containing the clauses to check
+            timeout (int) [600]: the timeout for the entailment check in seconds. Defaults to 600. 
 
         Returns:
             List[bool|None]: For each clause, True if the clause is entailed, False otherwise, None if some error occurs
@@ -156,7 +177,13 @@ class QueryInterface(ABC):
             clause = self._clause_file_can_entail(clause_file)
             self.details["entailment"][clause_file]["entailment clause"] = str(clause)
             start_time = time.time()
-            result, load_time = self._check_entail_clause_body(clause)
+            try:
+                with time_limit(timeout):
+                    result, load_time = self._check_entail_clause_body(clause)
+            except LocalTimeoutException:
+                self.details["entailment"][clause_file]["clause entailment result"] = "timeout"
+                results.append(None)
+                continue
             self.details["entailment"][clause_file]["clause entailment result"] = result
             self.details["entailment"][clause_file]["clause entailment time"] = time.time() - start_time - load_time
             results.append(result)
@@ -259,11 +286,13 @@ class QueryInterface(ABC):
     @final
     def check_implicant(
             self,
-            term_file: str) -> bool:
+            term_file: str,
+            timeout:int=600) -> bool:
         """function to check if the term specified in term_file is an implicant for the encoded formula
 
         Args:
             term_file (str): the path to the smt2 file containing the term to check
+            timeout (int) [600]: the timeout for the implicant check in seconds. Defaults to 600.
 
         Returns:
             bool: True if the term is an implicant, False otherwise
@@ -271,7 +300,12 @@ class QueryInterface(ABC):
         term = self._term_file_can_be_implicant(term_file)
         self.details["implicant term"] = str(term)
         start_time = time.time()
-        result, loading_time = self._check_implicant_body(term)
+        try:
+            with time_limit(600):
+                result, loading_time = self._check_implicant_body(term)
+        except LocalTimeoutException:
+            self.details["implicant result"] = "timeout"
+            return False
         self.details["implicant result"] = result
         self.details["implicant time"] = time.time() - start_time - loading_time
         return result
@@ -333,13 +367,22 @@ class QueryInterface(ABC):
         raise NotImplementedError()
 
     @final
-    def count_models(self) -> int:
+    def count_models(self, timeout:int=600) -> int:
         """function to count the number of models for the encoded formula
+
+        Args:
+            timeout (int) [600]: the timeout for the model counting in seconds. Defaults to 600.
 
         Returns:
             int: the number of models for the encoded formula
         """
         start_time = time.time()
+        try:
+            with time_limit(timeout):
+                result, loading_time = self._count_models()
+        except LocalTimeoutException:
+            self.details["model count"] = "timeout"
+            return 0
         result, loading_time = self._count_models()
         self.details["model count"] = result
         self.details["model count time"] = time.time() - start_time - loading_time
@@ -355,11 +398,19 @@ class QueryInterface(ABC):
         raise NotImplementedError()
 
     @final
-    def enumerate_models(self) -> None:
+    def enumerate_models(self,timeout:int=600) -> None:
         """function to enumerate all models for the encoded formula
+
+        Args:
+            timeout (int) [600]: the timeout for the model enumeration in seconds. Defaults to 600.
         """
         start_time = time.time()
-        load_time = self._enumerate_models()
+        try:
+            with time_limit(timeout):
+                load_time = self._enumerate_models()
+        except LocalTimeoutException:
+            self.details["model enumeration time"] = "timeout"
+            return
         self.details["model enumeration time"] = time.time() - start_time - load_time
 
     @final
@@ -400,17 +451,24 @@ class QueryInterface(ABC):
     def condition(
             self,
             alpha_file: str,
+            timeout:int=600,
             output_file: str | None = None) -> None:
         """function to obtain [compiled formula | alpha], where alpha is a literal or a cube specified in the provided .smt2 file
 
         Args:
             alpha_file (str): the path to the smt2 file containing the literal (or conjunction of literals) to condition the compiled formula
+            timeout (int) [600]: the timeout for the conditioning in seconds. Defaults to 600.
             output_file (str | None) [None]: the path to the .smt2 file where the conditioned compiled formula will be saved. Defaults to None.
         """
         alpha = self._alpha_file_can_condition(alpha_file)
         start_time = time.time()
         self.details["conditioning cube"] = str(alpha)
-        self._condition_body(alpha, output_file)
+        try:
+            with time_limit(timeout):
+                self._condition_body(alpha, output_file)
+        except LocalTimeoutException:
+            self.details["conditioning time"] = "timeout"
+            return
         self.details["conditioning time"] = time.time() - start_time
 
     @abstractmethod
