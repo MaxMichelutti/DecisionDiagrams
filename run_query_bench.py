@@ -104,7 +104,10 @@ def main():
         input_files = prepare_paths_ldd_randgen(target)
     else:
         input_files = prepare_paths_randgen(target)
+    count = 1
     for input_file in input_files:
+        print(count, "/", len(input_files))
+        count += 1
         input_files_folder = input_file.replace(".smt2", "/")
         input_files_folder = input_files_folder.replace("data", "ce_data",1)
         all_query_files = []
@@ -136,6 +139,7 @@ def main():
         if not structure_location.endswith(".smt2") and not os.path.isdir(structure_location):
             print("SKIPPING: Structure not available!")
             continue
+        print(f"Running query benchmark on {input_file}...")
         output_file = input_file.replace("data",target)
         output_file = output_file.replace(".smt2", ".json")
         command = f"{PYTHON_CALLABLE} {QUERY_MAIN_MODULE} --load_data {structure_location} --entail_clause {all_query_files_string} -d {output_file} -t {TIMEOUT_SECONDS}"
