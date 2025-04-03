@@ -157,7 +157,8 @@ def main():
     print("Structure type:", struc_type)
     print("Temporary folder:", structures_folder)
     print("Output folder:", target)
-    print("dDNNF compiler: ", ddnnf_compiler)
+    if ddnnf_compiler:
+        print("dDNNF compiler: ", ddnnf_compiler)
     print("Timeout seconds: ", TIMEOUT_SECONDS)
         
         
