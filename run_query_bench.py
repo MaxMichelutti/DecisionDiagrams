@@ -149,6 +149,16 @@ def main():
             with open(output_file, "w", encoding='utf8') as f:
                 f.write("{\"timeout\":\"query\"}")
             continue
+        print(f"Finished running {input_file}")
+    print("ALL  RUNS COMPLETED")
+    print("\n\n\nSUMMARY")
+    print("Benchmark source:", source)
+    print("Run type:", "query")
+    print("Structure type:", struc_type)
+    print("Temporary folder:", structures_folder)
+    print("Output folder:", target)
+    print("dDNNF compiler: ", ddnnf_compiler)
+    print("Timeout seconds: ", TIMEOUT_SECONDS)
         
         
 
