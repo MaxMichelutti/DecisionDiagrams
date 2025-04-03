@@ -86,7 +86,7 @@ def main():
     if source not in VALID_SOURCES:
         raise ValueError(
             f"Invalid source {source}. Valid sources are {VALID_SOURCES}")
-    target = input("Enter the oname of the uotput folder:")
+    target = input("Enter the name of the output folder:")
     struc_type = input("Enter the structure type among "+str(VALID_STRUCTURES)+":\n")
     if struc_type not in VALID_STRUCTURES:
         raise ValueError(
