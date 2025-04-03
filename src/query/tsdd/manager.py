@@ -85,7 +85,8 @@ class TSDDQueryManager(QueryInterface):
         # RETRIEVE THE INDEXES ON WHICH TO OPERATE
         clause_indexes = indexes_from_mapping(clause, self.abstraction_mapping)
 
-        clause_items = [(item[0] if item[1] else -item[0], item[1]) for item in clause_indexes]
+        # clause_items = [(item[0] if item[1] else -item[0], item[1]) for item in clause_indexes]
+        clause_items = [(item if item > 0 else -item, item > 0) for item in clause_indexes]
 
         return self._check_entail_clause_random_body(clause_items)
 
