@@ -327,7 +327,7 @@ class DDNNFQueryManager(QueryInterface):
             command.append(output_option)
             command.append(output_file)
         command_str = " ".join(command)
-        result = os.system(command_str + " > /dev/null")
+        result = os.system(command_str)
         if result != 0:
             raise RuntimeError(
                 "An error occurred while conditioning the T-dDNNF")
