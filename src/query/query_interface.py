@@ -155,7 +155,6 @@ class QueryInterface(ABC):
                 "The atoms in the encoded formula are: {}".format(clause_atoms, phi_atoms))
         return clause
 
-    @final
     def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
 

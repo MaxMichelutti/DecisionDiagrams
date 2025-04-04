@@ -5,18 +5,57 @@ import time
 from typing import List, Tuple
 
 from pysmt.fnode import FNode
-from pysmt.shortcuts import is_sat, Not, And, Or
+from pysmt.shortcuts import is_sat, Not, And, Or, Solver
+import mathsat
 
-from theorydd.formula import read_phi as _get_phi, save_phi as _save_phi, get_atoms as _get_atoms
+from theorydd.formula import read_phi as _get_phi, save_phi as _save_phi, get_atoms as _get_atoms, get_normalized as _get_normalized
 from theorydd.solvers.mathsat_total import MathSATTotalEnumerator
 
 from src.query.query_interface import QueryInterface
 
+class Timer(object): # pylint: disable=too-few-public-methods,locally-disabled
+    """A simple timer object."""
+
+    def __init__(self, timeout):
+        """
+        Timer Constructor.
+
+        :param timeout: the number of seconds before a timeout.
+        """
+        self._timeout = timeout
+        self._started = False
+        self._start = 0.0
+        self._end = 0.0
+
+    def __call__(self):
+        """
+        Callback function.
+
+        :returns: non-zero upon timeout.
+        """
+        now = time.time()
+        if not self._started:
+            self._started = now
+        self._end = now
+        ret = 0
+        if self._end - self._started > self._timeout:
+            ret = 1
+        return ret
+
+    def reset(self):
+        """
+        Reset the timer.
+        """
+        self._started = False
+        return
+
+CALLBACK = Timer(600.0)
 
 class SMTQueryManager(QueryInterface):
     """manager to handle all queries using a SMT solver"""
 
     loading_time: float
+    phi : FNode
 
     def __init__(
             self,
@@ -30,13 +69,22 @@ class SMTQueryManager(QueryInterface):
         super().__init__(source_file, {}, {})
 
         start_time = time.time()
-        phi = _get_phi(source_file)
+        self.phi = _get_phi(source_file)
         self.loading_time = time.time() - start_time
 
-        phi_atoms = _get_atoms(phi)
+        solver_options_dict = {
+            "preprocessor.toplevel_propagation": "false",
+            "preprocessor.simplification": "0",  # from mathsat
+        }
+        self.solver = Solver("msat", solver_options=solver_options_dict)
+
+        phi_atoms = _get_atoms(self.phi)
         for atom in phi_atoms:
-            self.refinement_mapping[atom] = atom
+            norm_atom = _get_normalized(atom, self.normalizer_solver.get_converter())
+            self.refinement_mapping[norm_atom] = norm_atom
         self.abstraction_mapping = self.refinement_mapping
+        
+        
 
     def _check_consistency(self) -> Tuple[bool, float]:
         """function to check if the encoded formula is consistent
@@ -74,27 +122,65 @@ class SMTQueryManager(QueryInterface):
 
         return is_valid, load_time
 
-    def _check_entail_clause_body(self, clause: FNode) -> Tuple[bool, float]:
+    def _check_entail_clause_body(self, clause: FNode) -> Tuple[bool|None, float]:
         """function to check if the encoded formula entails the given clause
 
         Args:
             clause (FNode): the clause to check for entailment
 
         Returns:
-            bool: True if the formula entails the clause, False otherwise
+            bool|None: True if the formula entails the clause, False otherwise. None in case of timeout
             float: the structure loading time
         """
         # LOAD THE FORMULA
-        start_time = time.time()
-        phi = _get_phi(self.source_folder)
-        load_time = time.time() - start_time
+        # start_time = time.time()
+        # phi = _get_phi(self.source_folder)
+        # load_time = time.time() - start_time
 
-        # CHECK IF THE FORMULA ENTAILS THE CLAUSE
-        # phi and not clause must be unsatisfiable
-        entailment = not is_sat(And(phi, Not(clause)), solver_name="msat")
-
-        return entailment, load_time
+        # # CHECK IF THE FORMULA ENTAILS THE CLAUSE
+        # # phi and not clause must be unsatisfiable
+        # entailment = not is_sat(And(phi, Not(clause)), solver_name="msat")
+        self.solver.push()
+        self.solver.add_assertion(Not(clause))
+        check_sat_result = mathsat.msat_solve(self.solver.msat_env())
+        print(check_sat_result)
+        self.solver.pop()
+        return None, 0.0
     
+    def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
+        """function to check if the encoded formula entails the clause specifoied in the clause_file
+
+        Args:
+            clause_file (List[str]): the path to the smt2 files containing the clauses to check
+            timeout (int) [600]: the timeout for the entailment check in seconds. Defaults to 600. 
+
+        Returns:
+            List[bool|None]: For each clause, True if the clause is entailed, False otherwise, None if some error occurs
+        """
+        self.details["entailment"] ={}
+        results = []
+        self.solver.add_assertion(self.phi)
+        mathsat.msat_set_termination_test(self.solver.msat_env(), CALLBACK)
+        for clause_file in clause_files:
+            if not os.path.isfile(clause_file):
+                print(f"File not found: {clause_file}")
+                results.append(None)
+                continue
+            self.details["entailment"][clause_file] = {}
+            clause = self._clause_file_can_entail(clause_file)
+            self.details["entailment"][clause_file]["entailment clause"] = str(clause)
+            start_time = time.time()
+            cur_result, load_time = self._check_entail_clause_body(clause)
+            if cur_result is None:
+                self.details["entailment"][clause_file]["clause entailment result"] = "timeout"
+                results.append(None)
+                continue
+            self.details["entailment"][clause_file]["clause entailment result"] = cur_result
+            self.details["entailment"][clause_file]["clause entailment time"] = time.time() - start_time - load_time
+            results.append(cur_result)
+        return results
+
+
     def _check_entail_clause_random_body(self, clause_items: List[Tuple[FNode, bool]]) -> Tuple[bool, float]:
         """function to check if the encoded formula entails the given clause
 
