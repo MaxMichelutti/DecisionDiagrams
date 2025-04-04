@@ -49,8 +49,6 @@ class Timer(object): # pylint: disable=too-few-public-methods,locally-disabled
         self._started = False
         return
 
-CALLBACK = Timer(600.0)
-
 class SMTQueryManager(QueryInterface):
     """manager to handle all queries using a SMT solver"""
 
@@ -160,7 +158,8 @@ class SMTQueryManager(QueryInterface):
         self.details["entailment"] ={}
         results = []
         self.solver.add_assertion(self.phi)
-        mathsat.msat_set_termination_test(self.solver.msat_env(), CALLBACK)
+        my_timer_callback = Timer(float(timeout))
+        mathsat.msat_set_termination_test(self.solver.msat_env(), my_timer_callback)
         for clause_file in clause_files:
             if not os.path.isfile(clause_file):
                 print(f"File not found: {clause_file}")
