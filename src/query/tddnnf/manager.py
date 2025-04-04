@@ -317,7 +317,6 @@ class DDNNFQueryManager(QueryInterface):
         condition_option = condition_option[:-1]
         command = [_DDNNF_CONDITION_PATH, condition_option, "-i_d4",
                    self.d4_file]
-        print(command)
         if output_file is not None:
             if (output_option is None):
                 # default output option
