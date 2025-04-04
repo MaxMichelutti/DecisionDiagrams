@@ -141,9 +141,14 @@ class SMTQueryManager(QueryInterface):
         self.solver.push()
         self.solver.add_assertion(Not(clause))
         check_sat_result = mathsat.msat_solve(self.solver.msat_env())
-        print(check_sat_result)
+        if check_sat_result == 0:
+            entailment = True
+        elif check_sat_result == 1:
+            entailment = False
+        else:
+            entailment = None
         self.solver.pop()
-        return None, 0.0
+        return entailment, 0.0
     
     def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
