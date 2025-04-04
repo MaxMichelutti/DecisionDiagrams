@@ -82,6 +82,7 @@ def prepare_paths_randgen(output_folder: str, tmp_folder: str = None) -> List[st
 
 def main():
     """main function to run the query benchmark"""
+    ddnnf_compiler = None
     source = input("Enter the source of the benchmark among "+str(VALID_SOURCES)+":\n")
     if source not in VALID_SOURCES:
         raise ValueError(
