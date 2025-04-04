@@ -155,12 +155,13 @@ class QueryInterface(ABC):
                 "The atoms in the encoded formula are: {}".format(clause_atoms, phi_atoms))
         return clause
 
-    def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
+    def check_entail_clause(self, clause_files: List[str],timeout:int=600,incrementality:bool=False) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
 
         Args:
             clause_file (List[str]): the path to the smt2 files containing the clauses to check
             timeout (int) [600]: the timeout for the entailment check in seconds. Defaults to 600. 
+            incrementality (bool) [False]: if True, the entailment check will be done incrementally. Defaults to False.
 
         Returns:
             List[bool|None]: For each clause, True if the clause is entailed, False otherwise, None if some error occurs

@@ -26,6 +26,7 @@ class QueryOptions:
     seed: int | None
     details: str | None
     timeout:int
+    incrementality:bool
 
     def __init__(self, args: argparse.Namespace):
         self.load_data = args.load_data
@@ -51,6 +52,7 @@ class QueryOptions:
         self.details = args.details
         self.timeout = args.timeout
         self.seed = args.seed
+        self.incrementality = args.incrementality
 
 def get_args() -> QueryOptions:
     """Reads the args from the command line"""
@@ -142,5 +144,9 @@ def get_args() -> QueryOptions:
         help="set a timeout for the query in seconds",
         type=int,
         default=600)
+    parser.add_argument(
+        "--incrementality",
+        help="if set to true, the smt solver will use incremental mode",
+        action="store_true")
     args = parser.parse_args()
     return QueryOptions(args)

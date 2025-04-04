@@ -83,6 +83,7 @@ def prepare_paths_randgen(output_folder: str, tmp_folder: str = None) -> List[st
 def main():
     """main function to run the query benchmark"""
     ddnnf_compiler = None
+    incrementality = None
     source = input("Enter the source of the benchmark among "+str(VALID_SOURCES)+":\n")
     if source not in VALID_SOURCES:
         raise ValueError(
@@ -97,6 +98,15 @@ def main():
         if ddnnf_compiler not in DDNNF_CPOMPILERS:
             raise ValueError(
                 f"Invalid ddnnf compiler {ddnnf_compiler}. Valid ddnnf compilers are {DDNNF_CPOMPILERS}")
+    if struc_type == "smt":
+        incrementality_asked = input("Is the structure incremental? (y/n):\n")
+        if incrementality_asked not in ["y", "n"]:
+            raise ValueError(
+                f"Invalid incrementality {incrementality_asked}. Valid values are y or n")
+        if incrementality_asked == "y":
+            incrementality = True
+        elif incrementality_asked == "n":
+            incrementality = False
     structures_folder = input("Enter the folder name for the structures:\n")
     if not os.path.isdir(f"benchmarks/{source}/{structures_folder}"):
         raise ValueError(
@@ -143,7 +153,10 @@ def main():
         print(f"Running query benchmark on {input_file}...")
         output_file = input_file.replace("data",target)
         output_file = output_file.replace(".smt2", ".json")
-        command = f"{PYTHON_CALLABLE} {QUERY_MAIN_MODULE} --load_data {structure_location} --entail_clause {all_query_files_string} -d {output_file} -t {TIMEOUT_SECONDS}"
+        incr_string = ""
+        if incrementality:
+            incr_string = "--incrementality "
+        command = f"{PYTHON_CALLABLE} {QUERY_MAIN_MODULE} --load_data {structure_location} --entail_clause {all_query_files_string} -d {output_file} -t {TIMEOUT_SECONDS} {incr_string}"
         result = os.system(command)
         if result != 0:
             print(f"Command failed with error code {result}")

@@ -146,6 +146,7 @@ def main():
     args = get_args()
 
     input_folder = args.load_data
+    is_smt:bool = False
 
     # LOAD THE CORRECT MANAGER
     if is_c2d_tddnnf_loading_folder_correct(input_folder):
@@ -158,6 +159,7 @@ def main():
         query_manager = _get_tsdd_manager(input_folder)
     elif input_folder.endswith(".smt") or input_folder.endswith(".smt2"):
         query_manager = SMTQueryManager(input_folder)
+        is_smt = True
     else:
         raise ValueError(
             "The folder where the compiled formula files are stored was not found, or some files are missing from it.")
@@ -169,7 +171,9 @@ def main():
         query_manager.check_validity(args.timeout)
 
     if len(args.entail_clause)>0:
-        if args.random:
+        if is_smt:
+            query_manager.check_entail_clause(args.entail_clause, args.timeout, args.incrementality)
+        elif args.random:
             query_manager.check_entail_clause_random(args.seed)
         else:
             query_manager.check_entail_clause(args.entail_clause, args.timeout)

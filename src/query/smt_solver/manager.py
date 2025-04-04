@@ -81,6 +81,8 @@ class SMTQueryManager(QueryInterface):
             norm_atom = _get_normalized(atom, self.normalizer_solver.get_converter())
             self.refinement_mapping[norm_atom] = norm_atom
         self.abstraction_mapping = self.refinement_mapping
+
+        self.incremental = False
         
         
 
@@ -138,29 +140,39 @@ class SMTQueryManager(QueryInterface):
         # # CHECK IF THE FORMULA ENTAILS THE CLAUSE
         # # phi and not clause must be unsatisfiable
         # entailment = not is_sat(And(phi, Not(clause)), solver_name="msat")
-        self.solver.push()
-        self.solver.add_assertion(Not(clause))
-        check_sat_result = mathsat.msat_solve(self.solver.msat_env())
+        if self.incremental:
+            self.solver.push()
+            self.solver.add_assertion(Not(clause))
+            check_sat_result = mathsat.msat_solve(self.solver.msat_env())
+            self.solver.pop()
+        else:
+            self.solver.reset_assertions()
+            self.solver.add_assertion(self.phi)
+            self.solver.add_assertion(clause)
+            check_sat_result = mathsat.msat_solve(self.solver.msat_env())
         if check_sat_result == 0:
             entailment = True
         elif check_sat_result == 1:
             entailment = False
         else:
             entailment = None
-        self.solver.pop()
         return entailment, 0.0
+        
     
-    def check_entail_clause(self, clause_files: List[str],timeout:int=600) -> List[bool|None]:
+    def check_entail_clause(self, clause_files: List[str],timeout:int=600,incrementality:bool=True) -> List[bool|None]:
         """function to check if the encoded formula entails the clause specifoied in the clause_file
 
         Args:
             clause_file (List[str]): the path to the smt2 files containing the clauses to check
             timeout (int) [600]: the timeout for the entailment check in seconds. Defaults to 600. 
+            incrementality (bool) [True]: if True, the solver will be used in incremental mode. Defaults to True.
 
         Returns:
             List[bool|None]: For each clause, True if the clause is entailed, False otherwise, None if some error occurs
         """
         self.details["entailment"] ={}
+        if incrementality:
+            self.incremental = True
         results = []
         self.solver.add_assertion(self.phi)
         my_timer_callback = Timer(float(timeout))
@@ -182,6 +194,7 @@ class SMTQueryManager(QueryInterface):
             self.details["entailment"][clause_file]["clause entailment result"] = cur_result
             self.details["entailment"][clause_file]["clause entailment time"] = time.time() - start_time - load_time
             results.append(cur_result)
+        self.incremental = False
         return results
 
 
