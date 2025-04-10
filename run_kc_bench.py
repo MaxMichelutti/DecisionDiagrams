@@ -324,7 +324,7 @@ def main() -> None:
                 print(f"{tmp_json_file} already exists. Skipping...")
                 continue
             os.system(
-                f"timeout 3600s {PYTHON_CALLABLE} {COMPILER_MAIN_MODULE} {negate_input_string} {preload_lemmas_str} {enumerate_true_str} -v -i {input_file} --save_lemmas {tmp_lemma_file} --solver partial -d {tmp_json_file} --count_models")
+                f"timeout 3600s {PYTHON_CALLABLE} {COMPILER_MAIN_MODULE} {negate_input_string} {preload_lemmas_str} {enumerate_true_str} -v -i {input_file} --save_lemmas {tmp_lemma_file} --solver {solver_type} -d {tmp_json_file} --count_models")
 
         # dd compilation only
         elif run_type == "dd" or run_type == "both":
